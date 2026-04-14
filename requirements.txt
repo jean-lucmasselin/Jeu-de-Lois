@@ -1,1 +1,4 @@
-rem
+streamlit
+pandas
+openpyxl
+plotly
