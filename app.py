@@ -1,26 +1,37 @@
 import streamlit as st
+from streamlit_gsheets import GSheetConnection
 import pandas as pd
 import random
-import os
 
-# Configuration de la page
-st.set_page_config(page_title="Jeu de l'Oie Éducatif", layout="wide")
+st.set_page_config(page_title="Jeu de l'Oie Connecté", layout="wide")
+
+# URLs de vos Sheets (Remplacez la deuxième par l'URL réelle de votre fichier scores)
+URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=drivesdk"
+URL_SCORES = "VOTRE_URL_SHEET_SCORES_ICI"
+
+# --- CONNEXION ---
+conn = st.connection("gsheets", type=GSheetConnection)
+
+# --- CONFIGURATION INTERFACE ---
+st.sidebar.title("⚙️ Configuration")
+
+# 1. Choix de l'instance (Onglet)
+# On définit manuellement les noms d'onglets ou on les récupère
+instance = st.sidebar.selectbox("Choisissez l'instance (cours) :", ["Sheet1", "Cours_B"]) # Modifiez selon vos onglets
+
+# 2. Identification
+nom_utilisateur = st.sidebar.text_input("Votre Nom :")
+role = st.sidebar.radio("Rôle :", ["Étudiant", "Professeur"])
 
 # --- CHARGEMENT DES DONNÉES ---
-@st.cache_data
-def load_questions():
-    return pd.read_excel("questions.xlsx")
-
-df_questions = load_questions()
+df_questions = conn.read(spreadsheet=URL_QUESTIONS, worksheet=instance)
 MAX_CASES = df_questions['Case'].max()
 
-# --- GESTION DU SCORE (Fichier CSV local) ---
-SCORE_FILE = "scores.csv"
-if not os.path.exists(SCORE_FILE):
-    pd.DataFrame(columns=["Étudiant", "Position"]).to_csv(SCORE_FILE, index=False)
-
 def get_scores():
-    return pd.read_csv(SCORE_FILE)
+    try:
+        return conn.read(spreadsheet=URL_SCORES, worksheet=instance)
+    except:
+        return pd.DataFrame(columns=["Étudiant", "Position"])
 
 def update_score(nom, nouvelle_pos):
     scores = get_scores()
@@ -29,62 +40,49 @@ def update_score(nom, nouvelle_pos):
     else:
         new_row = pd.DataFrame({"Étudiant": [nom], "Position": [nouvelle_pos]})
         scores = pd.concat([scores, new_row], ignore_index=True)
-    scores.to_csv(SCORE_FILE, index=False)
+    
+    # Mise à jour de la Google Sheet
+    conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=scores)
 
-# --- INTERFACE UTILISATEUR ---
-st.sidebar.title("🎮 Connexion")
-nom_utilisateur = st.sidebar.text_input("Entrez votre nom :")
-role = st.sidebar.radio("Rôle :", ["Étudiant", "Professeur"])
-
+# --- LOGIQUE DE JEU ---
 if role == "Étudiant":
     if not nom_utilisateur:
-        st.warning("Veuillez entrer votre nom dans la barre latérale.")
+        st.warning("Entrez votre nom à gauche.")
     else:
-        st.title(f"Bonne chance, {nom_utilisateur} !")
+        st.title(f"Instance : {instance}")
+        scores_actuels = get_scores()
+        current_pos = scores_actuels.loc[scores_actuels["Étudiant"] == nom_utilisateur, "Position"].values[0] if nom_utilisateur in scores_actuels["Étudiant"].values else 0
         
-        # Récupérer position actuelle
-        scores = get_scores()
-        current_pos = scores.loc[scores["Étudiant"] == nom_utilisateur, "Position"].values[0] if nom_utilisateur in scores["Étudiant"].values else 0
-        
-        st.metric("Ma position actuelle", f"Case {current_pos}")
+        st.metric("Position", f"Case {current_pos}")
 
         if st.button("🎲 Lancer le dé"):
             de = random.randint(1, 6)
-            nouvelle_pos = min(current_pos + de, MAX_CASES)
-            st.session_state.temp_pos = nouvelle_pos
-            st.info(f"Le dé affiche {de}. Vous tombez sur la case {nouvelle_pos} !")
+            st.session_state.temp_pos = min(current_pos + de, MAX_CASES)
+            st.info(f"Vous avancez vers la case {st.session_state.temp_pos}")
 
         if 'temp_pos' in st.session_state:
             pos = st.session_state.temp_pos
             q_data = df_questions[df_questions['Case'] == pos].iloc[0]
-            
-            st.subheader(f"Question Case {pos}")
+            st.subheader(f"Question {pos}")
             st.write(q_data['Question'])
+            choix = st.radio("Réponse :", [q_data['A'], q_data['B'], q_data['C']])
             
-            reponse = st.radio("Choisissez :", [q_data['A'], q_data['B'], q_data['C']])
-            map_rep = {q_data['A']: 'A', q_data['B']: 'B', q_data['C']: 'C'}
-
-            if st.button("Valider la réponse"):
-                if map_rep[reponse] == q_data['Reponse']:
-                    st.success("Correct ! Vous avancez.")
+            if st.button("Valider"):
+                mapping = {q_data['A']: 'A', q_data['B']: 'B', q_data['C']: 'C'}
+                if mapping[choix] == q_data['Reponse']:
+                    st.success("Bravo !")
                     update_score(nom_utilisateur, pos)
-                    del st.session_state.temp_pos
                 else:
-                    st.error("Mauvaise réponse... vous restez sur votre case précédente.")
-                    del st.session_state.temp_pos
+                    st.error("Dommage...")
+                del st.session_state.temp_pos
+                st.rerun()
 
 elif role == "Professeur":
-    st.title("👨‍🏫 Tableau de Bord Enseignant")
+    st.title(f"Suivi : {instance}")
     scores = get_scores()
-    
     if not scores.empty:
-        # Affichage du plateau sous forme de graphique
         import plotly.express as px
-        fig = px.scatter(scores, x="Position", y="Étudiant", color="Étudiant", 
-                         title="Progression en temps réel", size_max=20)
+        fig = px.scatter(scores, x="Position", y="Étudiant", color="Étudiant")
         fig.update_xaxes(range=[0, MAX_CASES + 1])
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.table(scores.sort_values(by="Position", ascending=False))
-    else:
-        st.info("Aucun étudiant n'est encore connecté.")
+        st.plotly_chart(fig)
+        st.table(scores)
