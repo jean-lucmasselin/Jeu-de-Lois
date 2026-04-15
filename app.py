@@ -2,20 +2,24 @@ import streamlit as st
 import pandas as pd
 import random
 
-# Essaye d'importer avec ou sans le 's' pour être paré à toute éventualité
+# Bloc d'importation sécurisé
 try:
-    from streamlit_gsheets import GSheetsConnection as GSheetConnection
+    from streamlit_gsheets import GSheetsConnection
 except ImportError:
-    from streamlit_gsheets import GSheetConnection
+    try:
+        from streamlit_gsheets import GSheetConnection as GSheetsConnection
+    except ImportError:
+        st.error("La bibliothèque st-gsheets-connection n'est pas installée. Vérifiez votre requirements.txt")
 
 st.set_page_config(page_title="Jeu de l'Oie", layout="wide")
 
-# URLs de vos Sheets (Remplacez la deuxième par l'URL réelle de votre fichier scores)
+# --- CONNEXION ---
+# On utilise maintenant GSheetsConnection qui a été défini plus haut
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# URLs de vos Sheets
 URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=drivesdk"
 URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc/edit?usp=sharing"
-
-# --- CONNEXION ---
-conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- CONFIGURATION INTERFACE ---
 st.sidebar.title("⚙️ Configuration")
