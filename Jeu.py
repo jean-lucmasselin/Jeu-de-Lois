@@ -86,4 +86,15 @@ if role == "Étudiant":
         if not q_data.empty:
             q_row = q_data.iloc[0]
             if 'reponse_validee' not in st.session_state:
-                with
+                with st.form("quiz_form"):
+                    st.write(f"**Question :** {q_row['Question']}")
+                    choix = st.radio("Réponse :", [str(q_row['A']), str(q_row['B']), str(q_row['C'])])
+                    valider = st.form_submit_button("Valider la réponse")
+                    
+                    if valider:
+                        map_inv = {str(q_row['A']): 'A', str(q_row['B']): 'B', str(q_row['C']): 'C'}
+                        bonne_rep = str(q_row['Bonne']).strip().upper()
+                        juste = (map_inv[choix] == bonne_rep)
+                        new_pos = pos if juste else max(0, current_pos - 1)
+                        
+                        # --- SA
