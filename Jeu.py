@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import os
 import time
+from datetime import datetime
 from PIL import Image
 
 st.set_page_config(page_title="Jeu de l'Oie Pédagogique", layout="wide")
@@ -23,25 +24,49 @@ def get_tab_names(file_id):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     return pd.ExcelFile(url).sheet_names
 
-# --- SYNC COURS ---
+# --- SYNC DU COURS ACTIF (Lecture de l'onglet Config) ---
 try:
     tabs = get_tab_names(ID_QUESTIONS)
     config_df = read_gsheet(ID_SCORES, "Config")
-    instance_forcee = str(config_df.columns[0]).strip()
+    # On lit le nom du cours stocké (en-tête de la colonne A)
+    instance_active = str(config_df.columns[0]).strip()
 except:
-    tabs, instance_forcee = ["Supervision"], "Supervision"
+    tabs, instance_active = ["Supervision"], "Supervision"
 
-# --- SIDEBAR ---
-st.sidebar.title("Configuration")
-role = st.sidebar.radio("Rôle :", ["Etudiant", "Professeur"])
-instance = st.sidebar.selectbox("Cours :", tabs, index=tabs.index(instance_forcee) if instance_forcee in tabs else 0) if role == "Professeur" else instance_forcee
-nom_utilisateur = st.sidebar.text_input("Ton Nom :")
+# --- SIDEBAR (Navigateur) ---
+st.sidebar.title("🎲 Configuration")
+role = st.sidebar.radio("Mon Rôle :", ["Étudiant", "Professeur"])
+
+if role == "Professeur":
+    # Sélection du cours
+    nouveau_cours = st.sidebar.selectbox("Choisir le cours :", tabs, index=tabs.index(instance_active) if instance_active in tabs else 0)
+    
+    # Bouton de validation pour toute la classe
+    if st.sidebar.button("✅ Valider pour toute la classe"):
+        try:
+            from streamlit_gsheets import GSheetsConnection
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            # On écrit le nom du cours dans l'onglet Config
+            df_config = pd.DataFrame(columns=[nouveau_cours])
+            conn.update(spreadsheet=URL_SCORES, worksheet="Config", data=df_config)
+            st.sidebar.success(f"Cours '{nouveau_cours}' activé !")
+            time.sleep(1)
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"Erreur Config : {e}")
+    
+    instance = nouveau_cours # Le prof travaille sur ce qu'il a sélectionné
+else:
+    # L'étudiant subit le cours choisi par le prof (bandeau vert)
+    instance = instance_active
+    st.sidebar.success(f"Cours actif : **{instance}**")
+
+nom_utilisateur = st.sidebar.text_input("Votre Nom :")
 
 # --- SECTION PROFESSEUR ---
 if role == "Professeur":
     st.title(f"👨‍🏫 Tableau de Bord : {instance}")
     
-    # Système d'auto-refresh (toutes les 15 secondes)
     if st.sidebar.toggle("Actualisation automatique", value=True):
         time.sleep(15)
         st.rerun()
@@ -52,27 +77,30 @@ if role == "Professeur":
             df_v = read_gsheet(ID_SCORES, instance)
             if not df_v.empty:
                 df_v.columns = [str(c).strip() for c in df_v.columns]
-                # Nettoyage et Tri
-                df_v = df_v[["Etudiant", "Position", "Coups", "Réussites"]].sort_values(by=["Position", "Réussites"], ascending=False)
+                # On ne garde que les colonnes utiles pour éviter les doublons
+                df_v = df_v[["Etudiant", "Position", "Coups", "Réussites", "Date", "Debut", "Fin"]]
+                df_v = df_v.sort_values(by=["Position", "Réussites"], ascending=False)
                 
-                # Graphique
-                st.subheader("📊 Progression des élèves")
+                st.subheader("📊 Progression")
                 st.bar_chart(df_v.set_index("Etudiant")["Position"])
                 
-                # Tableau propre
-                st.subheader("🏆 Classement")
+                st.subheader("🏆 Résultats détaillés")
                 st.table(df_v.reset_index(drop=True))
             else:
                 st.info("En attente de joueurs...")
-        except Exception as e: st.info(f"En attente de données... ({e})")
+        except: st.info("Aucune donnée disponible.")
     
     with c2:
-        if os.path.exists(NOM_FICHIER_QR): st.image(Image.open(NOM_FICHIER_QR), caption="Scanner pour jouer")
+        st.subheader("QR Code")
+        if os.path.exists(NOM_FICHIER_QR):
+            st.image(Image.open(NOM_FICHIER_QR), use_container_width=True)
+        else:
+            st.warning("QR Code absent sur GitHub")
 
-# --- SECTION ETUDIANT ---
-elif role == "Etudiant":
+# --- SECTION ÉTUDIANT ---
+elif role == "Étudiant":
     if not nom_utilisateur:
-        st.info("👋 Entre ton nom à gauche pour commencer !")
+        st.info("👋 Bienvenue ! Entrez votre nom à gauche pour commencer.")
     else:
         try:
             df_q = read_gsheet(ID_QUESTIONS, instance)
@@ -80,39 +108,29 @@ elif role == "Etudiant":
             df_s = read_gsheet(ID_SCORES, instance)
             df_s.columns = [str(c).strip() for c in df_s.columns]
             
-            # Récupération des stats
             user_data = df_s[df_s["Etudiant"] == nom_utilisateur]
             if not user_data.empty:
                 curr_pos = int(user_data["Position"].values[0])
                 curr_coups = int(user_data["Coups"].values[0])
                 curr_reussites = int(user_data["Réussites"].values[0])
+                start_time = str(user_data["Debut"].values[0])
             else:
                 curr_pos, curr_coups, curr_reussites = 0, 0, 0
+                start_time = None
             
             max_c = int(df_q['Case'].max())
         except:
-            curr_pos, max_c, curr_coups, curr_reussites = 0, 20, 0, 0
+            curr_pos, max_c, curr_coups, curr_reussites, start_time = 0, 20, 0, 0, None
 
-        # --- GESTION DE LA VICTOIRE ---
+        # --- VICTOIRE ---
         if curr_pos >= max_c:
-            st.title("🎉 FÉLICITATIONS !")
+            st.title("🎉 ARRIVÉE !")
             st.balloons()
-            # Calcul du rang
-            classement = df_s.sort_values(by=["Position", "Réussites"], ascending=False)["Etudiant"].tolist()
-            rang = classement.index(nom_utilisateur) + 1 if nom_utilisateur in classement else "?"
-            
-            st.success(f"### Tu as terminé le parcours !")
-            st.metric("Ton Rang", f"{rang}er" if rang == 1 else f"{rang}ème")
-            st.write(f"Score final : **{curr_reussites}** bonnes réponses en **{curr_coups}** coups.")
+            st.success(f"### Félicitations {nom_utilisateur} !")
+            st.write(f"Tu as terminé avec **{curr_reussites}** réussites en **{curr_coups}** coups.")
             if st.button("Recommencer au début"):
-                # Reset position uniquement
-                try:
-                    from streamlit_gsheets import GSheetsConnection
-                    conn = st.connection("gsheets", type=GSheetsConnection)
-                    df_s.loc[df_s["Etudiant"] == nom_utilisateur, "Position"] = 0
-                    conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
-                    st.rerun()
-                except: pass
+                # Reset
+                st.rerun()
         
         else:
             st.title(f"📍 Parcours : {instance}")
@@ -122,10 +140,15 @@ elif role == "Etudiant":
                 if st.button("🎲 Lancer le dé"):
                     de = random.randint(1, 6)
                     st.session_state.temp_pos = min(curr_pos + de, max_c)
+                    # Heure de début au premier lancer
+                    if not start_time or start_time == "nan":
+                        st.session_state.start_time = datetime.now().strftime("%H:%M:%S")
+                    else:
+                        st.session_state.start_time = start_time
                     st.rerun()
             else:
                 t_pos = st.session_state.temp_pos
-                st.subheader(f"🚀 Tu vises la case : {t_pos}")
+                st.subheader(f"🚀 Case visée : {t_pos}")
                 q_data = df_q[df_q['Case'] == t_pos]
                 
                 if not q_data.empty:
@@ -133,34 +156,44 @@ elif role == "Etudiant":
                     if 'rep_validee' not in st.session_state:
                         with st.form("quiz"):
                             st.write(f"**Question :** {q_row['Question']}")
-                            choix = st.radio("Ta réponse :", [str(q_row['A']), str(q_row['B']), str(q_row['C'])])
+                            choix = st.radio("Réponse :", [str(q_row['A']), str(q_row['B']), str(q_row['C'])])
                             if st.form_submit_button("Valider"):
                                 m_inv = {str(q_row['A']): 'A', str(q_row['B']): 'B', str(q_row['C']): 'C'}
                                 juste = (m_inv[choix] == str(q_row['Bonne']).strip().upper())
                                 
-                                # Calcul nouvelles stats
-                                nouvelle_p = t_pos if juste else max(0, curr_pos - 1)
-                                nouveau_coups = curr_coups + 1
-                                nouvelle_reussite = curr_reussites + (1 if juste else 0)
+                                # Stats
+                                n_pos = t_pos if juste else max(0, curr_pos - 1)
+                                n_coups = curr_coups + 1
+                                n_reuss = curr_reussites + (1 if juste else 0)
+                                now = datetime.now()
                                 
-                                # SAUVEGARDE
+                                # Sauvegarde
                                 try:
                                     from streamlit_gsheets import GSheetsConnection
                                     conn = st.connection("gsheets", type=GSheetsConnection)
+                                    data_up = {
+                                        "Etudiant": nom_utilisateur,
+                                        "Position": n_pos,
+                                        "Coups": n_coups,
+                                        "Réussites": n_reuss,
+                                        "Date": now.strftime("%d/%m/%Y"),
+                                        "Debut": st.session_state.start_time,
+                                        "Fin": now.strftime("%H:%M:%S")
+                                    }
                                     if nom_utilisateur in df_s["Etudiant"].values:
-                                        df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Réussites"]] = [nouvelle_p, nouveau_coups, nouvelle_reussite]
+                                        df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Réussites", "Date", "Debut", "Fin"]] = [n_pos, n_coups, n_reuss, data_up["Date"], data_up["Debut"], data_up["Fin"]]
                                     else:
-                                        df_s = pd.concat([df_s, pd.DataFrame([{"Etudiant": nom_utilisateur, "Position": nouvelle_p, "Coups": nouveau_coups, "Réussites": nouvelle_reussite}])], ignore_index=True)
+                                        df_s = pd.concat([df_s, pd.DataFrame([data_up])], ignore_index=True)
                                     conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
                                 except: pass
 
                                 st.session_state.rep_validee = True
-                                st.session_state.res = (juste, str(q_row['Bonne']).strip().upper(), nouvelle_p)
+                                st.session_state.res = (juste, str(q_row['Bonne']).strip().upper(), n_pos)
                                 st.rerun()
                     else:
                         j, b, p = st.session_state.res
-                        if j: st.success("✨ BRAVO ! Bonne réponse.")
-                        else: st.error(f"❌ DOMMAGE ! La réponse était {b}. Tu recules en case {p}.")
+                        if j: st.success("✨ Bonne réponse !")
+                        else: st.error(f"❌ Mauvaise réponse (c'était {b}). Retour en case {p}.")
                         if st.button("Continuer"):
                             del st.session_state.temp_pos
                             del st.session_state.rep_validee
@@ -171,10 +204,15 @@ elif role == "Etudiant":
                         try:
                             from streamlit_gsheets import GSheetsConnection
                             conn = st.connection("gsheets", type=GSheetsConnection)
+                            now = datetime.now()
+                            # Heure de début si c'est la première action
+                            s_t = st.session_state.get('start_time', now.strftime("%H:%M:%S"))
+                            
                             if nom_utilisateur in df_s["Etudiant"].values:
-                                df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups"]] = [t_pos, curr_coups + 1]
+                                df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Date", "Fin"]] = [t_pos, curr_coups + 1, now.strftime("%d/%m/%Y"), now.strftime("%H:%M:%S")]
                             else:
-                                df_s = pd.concat([df_s, pd.DataFrame([{"Etudiant": nom_utilisateur, "Position": t_pos, "Coups": 1, "Réussites": 0}])], ignore_index=True)
+                                nl = {"Etudiant": nom_utilisateur, "Position": t_pos, "Coups": 1, "Réussites": 0, "Date": now.strftime("%d/%m/%Y"), "Debut": s_t, "Fin": now.strftime("%H:%M:%S")}
+                                df_s = pd.concat([df_s, pd.DataFrame([nl])], ignore_index=True)
                             conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
                         except: pass
                         del st.session_state.temp_pos
