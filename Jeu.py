@@ -17,7 +17,7 @@ def read_gsheet(file_id, sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&x={cb}"
     return pd.read_csv(url)
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def get_tab_names(file_id):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     return pd.ExcelFile(url).sheet_names
@@ -40,7 +40,7 @@ if role == "Professeur":
     st.session_state['active_instance'] = instance
 else:
     instance = instance_forcee
-    st.sidebar.success(f"Cours actuel : {instance}")
+    st.sidebar.success(f"Cours : {instance}")
 
 nom_utilisateur = st.sidebar.text_input("Ton Nom :")
 
@@ -48,7 +48,6 @@ nom_utilisateur = st.sidebar.text_input("Ton Nom :")
 if role == "Professeur":
     st.title(f"Tableau de Bord : {instance}")
     col_g, col_d = st.columns([3, 1])
-    
     with col_g:
         try:
             df_v = read_gsheet(ID_SCORES, instance)
@@ -60,13 +59,9 @@ if role == "Professeur":
                 st.info("En attente de joueurs...")
         except:
             st.info("Aucun score enregistre.")
-
     with col_d:
-        st.subheader("QR Code")
         if os.path.exists(NOM_FICHIER_QR):
             st.image(Image.open(NOM_FICHIER_QR), use_container_width=True)
-        else:
-            st.error("QR Code introuvable sur GitHub")
 
 # --- SECTION ETUDIANT ---
 elif role == "Etudiant":
@@ -74,7 +69,6 @@ elif role == "Etudiant":
         st.info("Bienvenue ! Entre ton nom a gauche pour jouer.")
     else:
         st.title(f"Parcours : {instance}")
-        
         try:
             df_q = read_gsheet(ID_QUESTIONS, instance)
             df_q.columns = [str(c).strip() for c in df_q.columns]
@@ -97,7 +91,6 @@ elif role == "Etudiant":
         else:
             t_pos = st.session_state.temp_pos
             st.subheader(f"Case visee : {t_pos}")
-            
             try:
                 q_row = df_q[df_q['Case'] == t_pos].iloc[0]
                 if 'rep_validee' not in st.session_state:
@@ -114,14 +107,15 @@ elif role == "Etudiant":
                             try:
                                 from streamlit_gsheets import GSheetsConnection
                                 conn = st.connection("gsheets", type=GSheetsConnection)
-                                if nom_utilisateur in df_s["Etudiant"].values:
+                                if not df_s.empty and nom_utilisateur in df_s["Etudiant"].values:
                                     df_s.loc[df_s["Etudiant"] == nom_utilisateur, "Position"] = nouvelle_p
                                 else:
                                     nl = pd.DataFrame([{"Etudiant": nom_utilisateur, "Position": nouvelle_p}])
                                     df_s = pd.concat([df_s, nl], ignore_index=True)
-                                conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_scores)
-                            except:
-                                pass
+                                # MISE À JOUR DU FICHIER
+                                conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
+                            except Exception as e:
+                                st.error(f"Erreur d'ecriture Google : {e}")
 
                             st.session_state.rep_validee = True
                             st.session_state.msg_res = (juste, bonne, nouvelle_p)
@@ -131,7 +125,6 @@ elif role == "Etudiant":
                     j, b, p = st.session_state.msg_res
                     if j: st.success("Bravo ! Bonne reponse.")
                     else: st.error(f"Dommage ! La reponse etait {b}. Tu recules en case {p}.")
-                    
                     if st.button("Continuer"):
                         del st.session_state.temp_pos
                         del st.session_state.rep_validee
@@ -139,5 +132,16 @@ elif role == "Etudiant":
             except:
                 st.warning("Case libre !")
                 if st.button("S'installer ici"):
+                    # Code de sauvegarde pour case libre
+                    try:
+                        from streamlit_gsheets import GSheetsConnection
+                        conn = st.connection("gsheets", type=GSheetsConnection)
+                        if not df_s.empty and nom_utilisateur in df_s["Etudiant"].values:
+                            df_s.loc[df_s["Etudiant"] == nom_utilisateur, "Position"] = t_pos
+                        else:
+                            nl = pd.DataFrame([{"Etudiant": nom_utilisateur, "Position": t_pos}])
+                            df_s = pd.concat([df_s, nl], ignore_index=True)
+                        conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
+                    except: pass
                     del st.session_state.temp_pos
                     st.rerun()
