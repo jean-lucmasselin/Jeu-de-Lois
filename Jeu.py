@@ -60,7 +60,6 @@ except:
 if role == "Étudiant":
     st.title(f"📍 Parcours : {instance}")
     
-    # Chargement des scores
     try:
         df_scores = read_gsheet(ID_SCORES, instance)
         df_scores.columns = [str(c).strip() for c in df_scores.columns]
@@ -87,8 +86,4 @@ if role == "Étudiant":
         if not q_data.empty:
             q_row = q_data.iloc[0]
             if 'reponse_validee' not in st.session_state:
-                with st.form("quiz"):
-                    st.write(f"**Question :** {q_row['Question']}")
-                    choix = st.radio("Réponse :", [str(q_row['A']), str(q_row['B']), str(q_row['C'])])
-                    if st.form_submit_button("Valider"):
-                        map_inv = {str(q_row['A']): 'A', str(q_
+                with
