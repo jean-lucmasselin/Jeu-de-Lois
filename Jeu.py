@@ -27,7 +27,7 @@ if 'active_instance' not in st.session_state:
     st.session_state['active_instance'] = tabs[0]
 
 if role == "Professeur":
-    instance = st.sidebar.selectbox("Choisir le jeu :", tabs, index=tabs.index(st.session_state['active_instance']))
+    instance = st.sidebar.selectbox("Choisir le cours :", tabs, index=tabs.index(st.session_state['active_instance']))
     st.session_state['active_instance'] = instance
 else:
     instance = st.session_state['active_instance']
@@ -91,4 +91,4 @@ if role == "Étudiant" and nom_utilisateur:
                         new_pos = pos
                     else:
                         new_pos = max(0, current_pos - 1)
-                        st.error(f"❌ Dommage ! La bonne réponse était la **
+                        st.error(f"❌ Dommage ! La bonne réponse était la **{bonne_rep_lettre}**. Vous reculez à la case {new_pos}.")
