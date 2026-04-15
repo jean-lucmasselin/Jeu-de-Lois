@@ -9,24 +9,22 @@ st.set_page_config(page_title="Jeu de l'Oie Pédagogique", layout="wide")
 # --- CONFIGURATION ---
 ID_QUESTIONS = "1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E"
 ID_SCORES = "1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc"
+URL_SCORES = f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit"
 NOM_FICHIER_QR = "qr_code.png"
 
 def read_gsheet(file_id, sheet_name):
-    # On ajoute un nombre aléatoire à l'URL pour forcer Google à donner la version la plus récente
-    cache_bust = random.randint(1, 100000)
+    # Cache_bust pour forcer la lecture de la version la plus récente
+    cache_bust = random.randint(1, 99999)
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&x={cache_bust}"
     return pd.read_csv(url)
 
-@st.cache_data(ttl=10) # Cache très court pour voir les changements de cours
+@st.cache_data(ttl=10)
 def get_tab_names(file_id):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     return pd.ExcelFile(url).sheet_names
 
-# --- GESTION DU COURS ACTIF (SYNCHRONISATION) ---
+# --- GESTION DU COURS ACTIF ---
 tabs = get_tab_names(ID_QUESTIONS)
-
-# Par défaut, on cherche si le prof a défini un cours dans l'onglet "Config" du fichier Score
-# Si l'onglet n'existe pas, on prend le premier de la liste
 try:
     config_df = read_gsheet(ID_SCORES, "Config")
     instance_forcee = str(config_df.columns[0]).strip()
@@ -38,27 +36,26 @@ st.sidebar.title("🎲 Configuration")
 role = st.sidebar.radio("Mon Rôle :", ["Étudiant", "Professeur"])
 
 if role == "Professeur":
-    instance = st.sidebar.selectbox("Choisir le cours pour TOUS :", tabs, index=tabs.index(instance_forcee) if instance_forcee in tabs else 0)
-    if st.sidebar.button("💾 Valider ce cours pour la classe"):
-        st.sidebar.warning("Pour synchroniser, assurez-vous d'avoir un onglet 'Config' dans votre Sheet Score.")
+    instance = st.sidebar.selectbox("Choisir le cours :", tabs, index=tabs.index(instance_forcee) if instance_forcee in tabs else 0)
+    st.session_state['active_instance'] = instance
 else:
     instance = instance_forcee
     st.sidebar.success(f"Cours actif : **{instance}**")
 
 nom_utilisateur = st.sidebar.text_input("Votre Nom :")
 
-# --- ACCUEIL ÉTUDIANT ---
+# --- ACCUEIL ---
 if role == "Étudiant" and not nom_utilisateur:
     st.info("👋 **Bienvenue !** Entrez votre nom dans le menu à gauche pour rejoindre la partie.")
     st.stop()
 
-# --- CHARGEMENT DES QUESTIONS ---
+# --- CHARGEMENT ---
 try:
     df_questions = read_gsheet(ID_QUESTIONS, instance)
     df_questions.columns = [str(c).strip() for c in df_questions.columns]
     MAX_CASES = int(df_questions['Case'].max())
 except:
-    st.error(f"Erreur : Impossible de charger l'onglet '{instance}'.")
+    st.error(f"Impossible de charger l'onglet '{instance}'.")
     st.stop()
 
 # --- LOGIQUE ÉTUDIANT ---
@@ -97,53 +94,12 @@ if role == "Étudiant":
                         juste = (map_inv[choix] == bonne_rep)
                         new_pos = pos if juste else max(0, current_pos - 1)
                         
-                        # --- SAUVEGARDE RENFORCÉE ---
+                        # --- TENTATIVE DE SAUVEGARDE ---
                         try:
-                            # Tentative via le connecteur officiel
                             from streamlit_gsheets import GSheetsConnection
                             conn = st.connection("gsheets", type=GSheetsConnection)
                             
-                            # On prépare les données proprement
-                            if nom_utilisateur in df_scores["Étudiant"].values:
+                            # Préparation du tableau de score
+                            if not df_scores.empty and nom_utilisateur in df_scores["Étudiant"].values:
                                 df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = new_pos
                             else:
-                                new_entry = pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": new_pos}])
-                                df_scores = pd.concat([df_scores, new_entry], ignore_index=True)
-                            
-                            # On force l'écriture
-                            conn.update(
-                                spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", 
-                                worksheet=instance, 
-                                data=df_scores
-                            )
-                            st.session_state.save_status = "✅ Score enregistré"
-                        except Exception as e:
-                            st.session_state.save_status = f"⚠️ Erreur de sauvegarde : {e}"
-
-            if st.session_state.get('reponse_validee'):
-                juste, bonne_rep, new_pos = st.session_state.res_msg
-                if juste: st.success("✨ Bravo ! Bonne réponse.")
-                else: st.error(f"❌ Dommage ! La réponse était {bonne_rep}. Vous reculez en case {new_pos}.")
-                
-                if st.button("Continuer"):
-                    del st.session_state.temp_pos
-                    del st.session_state.reponse_validee
-                    st.rerun()
-        else:
-            st.warning("Case libre !")
-            if st.button("S'installer ici"):
-                del st.session_state.temp_pos
-                st.rerun()
-
-elif role == "Professeur":
-    st.title(f"👨‍🏫 Tableau de Bord : {instance}")
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        try:
-            df_v = read_gsheet(ID_SCORES, instance)
-            if not df_v.empty:
-                st.bar_chart(df_v.set_index("Étudiant")["Position"])
-                st.table(df_v.sort_values(by="Position", ascending=False))
-        except: st.info("En attente...")
-    with c2:
-        if os.path.exists(NOM_FICHIER_QR): st.image(Image.open(NOM_FICHIER_QR))
