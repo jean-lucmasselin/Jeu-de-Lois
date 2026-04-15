@@ -2,96 +2,109 @@ import streamlit as st
 import pandas as pd
 import random
 
-# Bloc d'importation sécurisé
 try:
     from streamlit_gsheets import GSheetsConnection
 except ImportError:
-    try:
-        from streamlit_gsheets import GSheetConnection as GSheetsConnection
-    except ImportError:
-        st.error("La bibliothèque st-gsheets-connection n'est pas installée. Vérifiez votre requirements.txt")
+    from streamlit_gsheets import GSheetConnection as GSheetsConnection
 
-st.set_page_config(page_title="Jeu de l'Oie", layout="wide")
+st.set_page_config(page_title="Jeu de l'Oie Dynamique", layout="wide")
 
-# --- CONNEXION ---
-# On utilise maintenant GSheetsConnection qui a été défini plus haut
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# URLs de vos Sheets
-URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=drivesdk"
+# --- CONFIGURATION DES URLS ---
+URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=sharing"
+# REMPLACE BIEN CETTE URL PAR TON FICHIER SCORES (Partagé en "Éditeur")
 URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc/edit?usp=sharing"
 
-# --- CONFIGURATION INTERFACE ---
-st.sidebar.title("⚙️ Configuration")
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 1. Choix de l'instance (Onglet)
-# On définit manuellement les noms d'onglets ou on les récupère
-instance = st.sidebar.selectbox("Choisissez l'instance (cours) :", ["Sheet1", "Cours_B"]) # Modifiez selon vos onglets
+# --- FONCTION POUR RÉCUPÉRER LES ONGLETS ---
+@st.cache_data(ttl=600)
+def get_all_sheets(url):
+    # Cette astuce permet de lister les onglets sans erreur
+    sheet_id = url.split("/d/")[1].split("/")[0]
+    api_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
+    # On lit juste pour tester la connexion et on pourrait affiner, 
+    # mais pour faire simple, liste tes onglets ici si l'API est bloquée :
+    return ["Sheet1", "Module_1", "Examen"] # <--- MODIFIE CES NOMS ICI selon ton Excel
 
-# 2. Identification
-nom_utilisateur = st.sidebar.text_input("Votre Nom :")
+# --- INTERFACE ---
+st.sidebar.title("🎮 Configuration")
+
+# Si tu connais tes onglets, saisis-les ici exactement comme dans Google Sheets
+liste_onglets = ["Sheet1", "Cours_Informatique", "Culture_G"] 
+instance = st.sidebar.selectbox("Choisir le cours :", liste_onglets)
+
+nom_utilisateur = st.sidebar.text_input("Ton Nom :")
 role = st.sidebar.radio("Rôle :", ["Étudiant", "Professeur"])
 
 # --- CHARGEMENT DES DONNÉES ---
-df_questions = conn.read(spreadsheet=URL_QUESTIONS, worksheet=instance)
-MAX_CASES = df_questions['Case'].max()
+try:
+    # On charge les questions de l'onglet sélectionné
+    df_questions = conn.read(spreadsheet=URL_QUESTIONS, worksheet=instance)
+    # Nettoyage des colonnes au cas où il y aurait des espaces
+    df_questions.columns = df_questions.columns.str.strip()
+    MAX_CASES = int(df_questions['Case'].max())
 
-def get_scores():
-    try:
-        return conn.read(spreadsheet=URL_SCORES, worksheet=instance)
-    except:
-        return pd.DataFrame(columns=["Étudiant", "Position"])
-
-def update_score(nom, nouvelle_pos):
-    scores = get_scores()
-    if nom in scores["Étudiant"].values:
-        scores.loc[scores["Étudiant"] == nom, "Position"] = nouvelle_pos
-    else:
-        new_row = pd.DataFrame({"Étudiant": [nom], "Position": [nouvelle_pos]})
-        scores = pd.concat([scores, new_row], ignore_index=True)
-    
-    # Mise à jour de la Google Sheet
-    conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=scores)
-
-# --- LOGIQUE DE JEU ---
-if role == "Étudiant":
-    if not nom_utilisateur:
-        st.warning("Entrez votre nom à gauche.")
-    else:
-        st.title(f"Instance : {instance}")
-        scores_actuels = get_scores()
-        current_pos = scores_actuels.loc[scores_actuels["Étudiant"] == nom_utilisateur, "Position"].values[0] if nom_utilisateur in scores_actuels["Étudiant"].values else 0
-        
-        st.metric("Position", f"Case {current_pos}")
-
-        if st.button("🎲 Lancer le dé"):
-            de = random.randint(1, 6)
-            st.session_state.temp_pos = min(current_pos + de, MAX_CASES)
-            st.info(f"Vous avancez vers la case {st.session_state.temp_pos}")
-
-        if 'temp_pos' in st.session_state:
-            pos = st.session_state.temp_pos
-            q_data = df_questions[df_questions['Case'] == pos].iloc[0]
-            st.subheader(f"Question {pos}")
-            st.write(q_data['Question'])
-            choix = st.radio("Réponse :", [q_data['A'], q_data['B'], q_data['C']])
+    if role == "Étudiant":
+        if not nom_utilisateur:
+            st.info("👈 Entre ton nom dans le menu à gauche pour commencer.")
+        else:
+            st.title(f"📍 Parcours : {instance}")
             
-            if st.button("Valider"):
-                mapping = {q_data['A']: 'A', q_data['B']: 'B', q_data['C']: 'C'}
-                if mapping[choix] == q_data['Reponse']:
-                    st.success("Bravo !")
-                    update_score(nom_utilisateur, pos)
-                else:
-                    st.error("Dommage...")
-                del st.session_state.temp_pos
-                st.rerun()
+            # Lecture des scores
+            try:
+                scores_df = conn.read(spreadsheet=URL_SCORES, worksheet=instance)
+            except:
+                scores_df = pd.DataFrame(columns=["Étudiant", "Position"])
 
-elif role == "Professeur":
-    st.title(f"Suivi : {instance}")
-    scores = get_scores()
-    if not scores.empty:
-        import plotly.express as px
-        fig = px.scatter(scores, x="Position", y="Étudiant", color="Étudiant")
-        fig.update_xaxes(range=[0, MAX_CASES + 1])
-        st.plotly_chart(fig)
-        st.table(scores)
+            current_pos = scores_df.loc[scores_df["Étudiant"] == nom_utilisateur, "Position"].values[0] if nom_utilisateur in scores_df["Étudiant"].values else 0
+            
+            st.metric("Ma position", f"Case {current_pos} / {MAX_CASES}")
+
+            if st.button("🎲 Lancer le dé"):
+                de = random.randint(1, 6)
+                st.session_state.temp_pos = min(current_pos + de, MAX_CASES)
+                st.write(f"Le dé indique {de} ! Tu vas à la case {st.session_state.temp_pos}")
+
+            if 'temp_pos' in st.session_state:
+                pos = st.session_state.temp_pos
+                q_row = df_questions[df_questions['Case'] == pos].iloc[0]
+                
+                with st.form("question_form"):
+                    st.subheader(f"❓ Question Case {pos}")
+                    st.write(q_row['Question'])
+                    choix = st.radio("Ta réponse :", [q_row['A'], q_row['B'], q_row['C']])
+                    submit = st.form_submit_button("Valider")
+                    
+                    if submit:
+                        mapping = {q_row['A']: 'A', q_row['B']: 'B', q_row['C']: 'C'}
+                        if mapping[choix] == q_row['Reponse']:
+                            st.success("Bonne réponse ! Tu avances.")
+                            # Mise à jour du score
+                            new_scores = scores_df.copy()
+                            if nom_utilisateur in new_scores["Étudiant"].values:
+                                new_scores.loc[new_scores["Étudiant"] == nom_utilisateur, "Position"] = pos
+                            else:
+                                new_scores = pd.concat([new_scores, pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": pos}])])
+                            
+                            conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=new_scores)
+                            del st.session_state.temp_pos
+                            st.rerun()
+                        else:
+                            st.error("Mauvaise réponse... Tu restes sur ta case.")
+                            del st.session_state.temp_pos
+
+    elif role == "Professeur":
+        st.title(f"📊 Suivi : {instance}")
+        try:
+            scores_visu = conn.read(spreadsheet=URL_SCORES, worksheet=instance)
+            if not scores_visu.empty:
+                st.bar_chart(scores_visu.set_index("Étudiant")["Position"])
+                st.table(scores_visu)
+            else:
+                st.write("En attente de joueurs...")
+        except:
+            st.write("Aucune donnée de score trouvée pour cet onglet.")
+
+except Exception as e:
+    st.error(f"Erreur de connexion : {e}")
+    st.info("Vérifiez que l'onglet sélectionné existe et que le fichier est bien partagé.")
