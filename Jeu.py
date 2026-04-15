@@ -29,9 +29,28 @@ def get_all_sheets(url):
 st.sidebar.title("🎮 Configuration")
 
 # --- CONFIGURATION DES ONGLETS ---
-# Assurez-vous que ces noms sont EXACTEMENT ceux de vos onglets Sheets
 liste_onglets = ["Supervision", "CG04", "CG05"]
+instance = st.sidebar.selectbox("Choisir le jeu :", liste_onglets)
 
+# --- CHARGEMENT ---
+try:
+    # On force la lecture en ignorant le cache pour le test
+    df_questions = conn.read(spreadsheet=URL_QUESTIONS, worksheet=instance, ttl=0)
+    st.sidebar.success(f"✅ Onglet {instance} Questions : OK")
+    
+    # Tentative de lecture des scores
+    try:
+        df_scores = conn.read(spreadsheet=URL_SCORES, worksheet=instance, ttl=0)
+        st.sidebar.success(f"✅ Onglet {instance} Scores : OK")
+    except Exception as e_score:
+        st.sidebar.warning("⚠️ Onglet Scores vide ou inexistant. Création auto prévue.")
+        df_scores = pd.DataFrame(columns=["Étudiant", "Position"])
+
+except Exception as e:
+    st.error("❌ Erreur de connexion détaillée :")
+    st.code(str(e)) # Ceci va nous dire EXACTEMENT ce qui ne va pas
+    st.info("Vérifiez que le nom de l'onglet est EXACTEMENT le même dans Excel et dans le menu de gauche.")
+    st.stop()
 instance = st.sidebar.selectbox("Choisir le cours :", liste_onglets)
 nom_utilisateur = st.sidebar.text_input("Ton Nom :")
 role = st.sidebar.radio("Rôle :", ["Étudiant", "Professeur"])
