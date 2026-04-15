@@ -97,24 +97,28 @@ if role == "Étudiant":
                         juste = (map_inv[choix] == bonne_rep)
                         new_pos = pos if juste else max(0, current_pos - 1)
                         
-                        # --- SAUVEGARDE VIA GSPREAD (Connexion simplifiée) ---
+                        # --- SAUVEGARDE RENFORCÉE ---
                         try:
+                            # Tentative via le connecteur officiel
                             from streamlit_gsheets import GSheetsConnection
                             conn = st.connection("gsheets", type=GSheetsConnection)
                             
+                            # On prépare les données proprement
                             if nom_utilisateur in df_scores["Étudiant"].values:
                                 df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = new_pos
                             else:
-                                df_scores = pd.concat([df_scores, pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": new_pos}])], ignore_index=True)
+                                new_entry = pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": new_pos}])
+                                df_scores = pd.concat([df_scores, new_entry], ignore_index=True)
                             
-                            # On utilise une méthode plus simple pour l'écriture
-                            conn.update(spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", worksheet=instance, data=df_scores)
+                            # On force l'écriture
+                            conn.update(
+                                spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", 
+                                worksheet=instance, 
+                                data=df_scores
+                            )
+                            st.session_state.save_status = "✅ Score enregistré"
                         except Exception as e:
-                            st.error(f"Erreur d'enregistrement. Vérifiez que l'onglet '{instance}' existe dans le fichier SCORE et que vous avez configuré les Secrets Streamlit.")
-                        
-                        st.session_state.reponse_validee = True
-                        st.session_state.res_msg = (juste, bonne_rep, new_pos)
-                        st.rerun()
+                            st.session_state.save_status = f"⚠️ Erreur de sauvegarde : {e}"
 
             if st.session_state.get('reponse_validee'):
                 juste, bonne_rep, new_pos = st.session_state.res_msg
