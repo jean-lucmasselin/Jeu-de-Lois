@@ -10,8 +10,8 @@ except ImportError:
 st.set_page_config(page_title="Jeu de l'Oie Dynamique", layout="wide")
 
 # --- CONFIGURATION DES URLS ---
-URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=sharing"
-URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc/edit?usp=sharing"
+URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E"
+URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc"
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
