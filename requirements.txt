@@ -2,4 +2,4 @@ streamlit
 pandas
 openpyxl
 plotly
-st-gsheets-connection
+st-gsheets-connection==0.0.3
