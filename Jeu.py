@@ -4,7 +4,7 @@ import random
 
 st.set_page_config(page_title="Jeu de l'Oie Pédagogique", layout="wide")
 
-# --- CONFIGURATION DES URLS ---
+# --- CONFIGURATION ---
 ID_QUESTIONS = "1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E"
 ID_SCORES = "1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc"
 
@@ -18,29 +18,16 @@ def get_tab_names(file_id):
     all_sheets = pd.ExcelFile(url)
     return all_sheets.sheet_names
 
-# --- BARRE LATÉRALE ---
-st.sidebar.title("🎲 Configuration")
-
+# --- INTERFACE ---
 role = st.sidebar.radio("Mon Rôle :", ["Étudiant", "Professeur"])
+tabs = get_tab_names(ID_QUESTIONS)
 
-# RÉCUPÉRATION DES ONGLETS
-try:
-    tabs = get_tab_names(ID_QUESTIONS)
-    
-    # SÉCURITÉ : Seul le prof choisit l'instance. 
-    # Pour l'étudiant, on mémorise le choix du prof dans la session ou on le laisse sur le premier par défaut.
-    if role == "Professeur":
-        instance = st.sidebar.selectbox("Choisir le jeu (Prof uniquement) :", tabs)
-        st.session_state['active_instance'] = instance
-    else:
-        # L'étudiant voit le cours sélectionné mais ne peut pas le changer
-        default_inst = st.session_state.get('active_instance', tabs[0])
-        st.sidebar.info(f"Cours actuel : **{default_inst}**")
-        instance = default_inst
-
-except Exception as e:
-    st.error("Erreur de lecture des onglets.")
-    st.stop()
+if role == "Professeur":
+    instance = st.sidebar.selectbox("Choisir le jeu :", tabs)
+    st.session_state['active_instance'] = instance
+else:
+    instance = st.session_state.get('active_instance', tabs[0])
+    st.sidebar.info(f"Cours : **{instance}**")
 
 nom_utilisateur = st.sidebar.text_input("Votre Nom :")
 
@@ -49,85 +36,93 @@ try:
     df_questions = read_gsheet(ID_QUESTIONS, instance)
     df_questions.columns = [str(c).strip() for c in df_questions.columns]
     MAX_CASES = int(df_questions['Case'].max())
-except Exception as e:
-    st.error(f"En attente de connexion au cours...")
+except:
     st.stop()
 
-# --- LOGIQUE DE JEU ---
-if role == "Étudiant":
-    if not nom_utilisateur:
-        st.info("👈 Entrez votre nom à gauche pour commencer.")
-    else:
-        st.title(f"📍 Parcours : {instance}")
-        
-        try:
-            df_scores = read_gsheet(ID_SCORES, instance)
-            df_scores.columns = [str(c).strip() for c in df_scores.columns]
-        except:
-            df_scores = pd.DataFrame(columns=["Étudiant", "Position"])
+# --- LOGIQUE ÉTUDIANT ---
+if role == "Étudiant" and nom_utilisateur:
+    st.title(f"📍 Parcours : {instance}")
+    
+    # Récupération Position
+    try:
+        df_scores = read_gsheet(ID_SCORES, instance)
+        df_scores.columns = [str(c).strip() for c in df_scores.columns]
+        current_pos = int(df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"].values[0]) if nom_utilisateur in df_scores["Étudiant"].values else 0
+    except:
+        df_scores = pd.DataFrame(columns=["Étudiant", "Position"])
+        current_pos = 0
 
-        if not df_scores.empty and nom_utilisateur in df_scores["Étudiant"].values:
-            current_pos = int(df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"].values[0])
-        else:
-            current_pos = 0
-        
-        st.metric("Ma position", f"Case {current_pos} / {MAX_CASES}")
+    st.metric("Ma position", f"Case {current_pos} / {MAX_CASES}")
 
-        # GESTION DU DÉ (Case 0 ou autre)
+    # 1. BOUTON LANCER LE DÉ
+    if 'temp_pos' not in st.session_state:
         if st.button("🎲 Lancer le dé pour progresser"):
             de = random.randint(1, 6)
             st.session_state.temp_pos = min(current_pos + de, MAX_CASES)
-            st.rerun() # On force le rafraîchissement pour afficher la question
+            st.rerun()
 
-        # AFFICHAGE DE LA QUESTION SI ON A LANCÉ LE DÉ
-        if 'temp_pos' in st.session_state:
-            pos = st.session_state.temp_pos
-            st.subheader(f"🚀 Case visée : {pos}")
+    # 2. GESTION DE LA QUESTION
+    else:
+        pos = st.session_state.temp_pos
+        st.subheader(f"🚀 Case visée : {pos}")
+
+        # On vérifie si la question existe pour cette case
+        question_data = df_questions[df_questions['Case'] == pos]
+        
+        if not question_data.empty:
+            q_row = question_data.iloc[0]
             
-            try:
-                q_row = df_questions[df_questions['Case'] == pos].iloc[0]
+            with st.form("quiz_form"):
+                st.write(f"**Question :** {q_row['Question']}")
+                options = [str(q_row['A']), str(q_row['B']), str(q_row['C'])]
+                choix = st.radio("Votre réponse :", options)
                 
-                with st.form("quiz_form"):
-                    st.write(f"**Question :** {q_row['Question']}")
-                    options = [str(q_row['A']), str(q_row['B']), str(q_row['C'])]
-                    choix = st.radio("Votre réponse :", options)
+                if st.form_submit_button("Valider la réponse"):
+                    map_inv = {str(q_row['A']): 'A', str(q_row['B']): 'B', str(q_row['C']): 'C'}
+                    bonne_rep_lettre = str(q_row['Reponse']).strip()
                     
-                    if st.form_submit_button("Valider la réponse"):
-                        map_inv = {str(q_row['A']): 'A', str(q_row['B']): 'B', str(q_row['C']): 'C'}
-                        if map_inv[choix] == str(q_row['Reponse']).strip():
-                            st.success("Correct ! Enregistrement...")
-                            
-                            # Mise à jour
-                            if not df_scores.empty and nom_utilisateur in df_scores["Étudiant"].values:
-                                df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = pos
-                            else:
-                                df_scores = pd.concat([df_scores, pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": pos}])], ignore_index=True)
-                            
-                            from streamlit_gsheets import GSheetsConnection
-                            conn = st.connection("gsheets", type=GSheetsConnection)
-                            conn.update(spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", worksheet=instance, data=df_scores)
-                            
-                            del st.session_state.temp_pos
-                            st.rerun()
-                        else:
-                            st.error("Faux ! Vous restez sur votre case.")
-                            del st.session_state.temp_pos
-            except:
-                st.warning(f"Pas de question sur la case {pos}. Avance automatique !")
-                # Si pas de question, on avance quand même ? Ou on annule ? 
-                # Ici on enregistre la position car c'est souvent une case "bonus"
-                if st.button("Valider la case libre"):
-                    # (Code de mise à jour identique au succès)
-                    pass
+                    if map_inv[choix] == bonne_rep_lettre:
+                        st.success(f"✨ Bravo {nom_utilisateur} ! Bonne réponse.")
+                        new_pos = pos
+                    else:
+                        # LOGIQUE DE RECUL : on recule d'une case (minimum case 0)
+                        new_pos = max(0, current_pos - 1)
+                        st.error(f"❌ Dommage ! La bonne réponse était la {bonne_rep_lettre}. Vous reculez à la case {new_pos}.")
+                    
+                    # MISE À JOUR GOOGLE SHEETS
+                    if nom_utilisateur in df_scores["Étudiant"].values:
+                        df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = new_pos
+                    else:
+                        df_scores = pd.concat([df_scores, pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": new_pos}])], ignore_index=True)
+                    
+                    from streamlit_gsheets import GSheetsConnection
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    conn.update(spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", worksheet=instance, data=df_scores)
+                    
+                    del st.session_state.temp_pos
+                    st.button("Continuer") # Petit bouton pour que l'étudiant lise le message avant de rafraîchir
+        else:
+            # CAS OÙ LA CASE N'A PAS DE QUESTION DANS EXCEL
+            st.warning("Case libre ! Vous avancez sans question.")
+            if st.button("Prendre position sur cette case"):
+                # Mise à jour auto
+                if nom_utilisateur in df_scores["Étudiant"].values:
+                    df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = pos
+                else:
+                    df_scores = pd.concat([df_scores, pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": pos}])], ignore_index=True)
+                
+                from streamlit_gsheets import GSheetsConnection
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                conn.update(spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", worksheet=instance, data=df_scores)
+                del st.session_state.temp_pos
+                st.rerun()
 
 elif role == "Professeur":
-    st.title(f"📊 Tableau de Bord : {instance}")
+    st.title(f"📊 Suivi : {instance}")
     try:
         df_visu = read_gsheet(ID_SCORES, instance)
         if not df_visu.empty:
             st.bar_chart(df_visu.set_index("Étudiant")["Position"])
             st.table(df_visu.sort_values(by="Position", ascending=False))
-        else:
-            st.info("Aucun score pour le moment.")
     except:
-        st.write("L'onglet n'est pas encore initialisé dans les scores.")
+        st.info("Aucun score.")
