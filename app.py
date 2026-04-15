@@ -11,7 +11,6 @@ st.set_page_config(page_title="Jeu de l'Oie Dynamique", layout="wide")
 
 # --- CONFIGURATION DES URLS ---
 URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=sharing"
-# REMPLACE BIEN CETTE URL PAR TON FICHIER SCORES (Partagé en "Éditeur")
 URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc/edit?usp=sharing"
 
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -24,7 +23,7 @@ def get_all_sheets(url):
     api_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
     # On lit juste pour tester la connexion et on pourrait affiner, 
     # mais pour faire simple, liste tes onglets ici si l'API est bloquée :
-    return ["Sheet1", "Module_1", "Examen"] # <--- MODIFIE CES NOMS ICI selon ton Excel
+    return ["Supervision", "Module_1", "Examen"] # <--- MODIFIE CES NOMS ICI selon ton Excel
 
 # --- INTERFACE ---
 st.sidebar.title("🎮 Configuration")
