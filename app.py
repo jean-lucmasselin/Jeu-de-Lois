@@ -23,13 +23,13 @@ def get_all_sheets(url):
     api_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
     # On lit juste pour tester la connexion et on pourrait affiner, 
     # mais pour faire simple, liste tes onglets ici si l'API est bloquée :
-    return ["Supervision", "Module_1", "Examen"] # <--- MODIFIE CES NOMS ICI selon ton Excel
+    return ["Supervision", "CG04", "CG05"] # <--- MODIFIE CES NOMS ICI selon ton Excel
 
 # --- INTERFACE ---
 st.sidebar.title("🎮 Configuration")
 
 # Si tu connais tes onglets, saisis-les ici exactement comme dans Google Sheets
-liste_onglets = ["Sheet1", "Cours_Informatique", "Culture_G"] 
+liste_onglets = ["Supervision", "CG04", "CG05"] 
 instance = st.sidebar.selectbox("Choisir le cours :", liste_onglets)
 
 nom_utilisateur = st.sidebar.text_input("Ton Nom :")
