@@ -11,7 +11,7 @@ ID_QUESTIONS = "1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E"
 ID_SCORES = "1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc"
 URL_SCORES = f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit"
 # NOM EXACT DU FICHIER TELECHARGE
-NOM_FICHIER_QR = "QR code jeu de lois 2026.png" 
+NOM_FICHIER_QR = "qr_code.png" 
 
 def read_gsheet(file_id, sheet_name):
     cache_bust = random.randint(1, 99999)
