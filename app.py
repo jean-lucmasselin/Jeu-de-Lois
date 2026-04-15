@@ -28,20 +28,28 @@ def get_all_sheets(url):
 # --- INTERFACE ---
 st.sidebar.title("🎮 Configuration")
 
-# Si tu connais tes onglets, saisis-les ici exactement comme dans Google Sheets
-liste_onglets = ["Supervision", "CG04", "CG05"] 
-instance = st.sidebar.selectbox("Choisir le cours :", liste_onglets)
+# --- CONFIGURATION DES ONGLETS ---
+# Assurez-vous que ces noms sont EXACTEMENT ceux de vos onglets Sheets
+liste_onglets = ["Supervision", "CG04", "CG05"]
 
+instance = st.sidebar.selectbox("Choisir le cours :", liste_onglets)
 nom_utilisateur = st.sidebar.text_input("Ton Nom :")
 role = st.sidebar.radio("Rôle :", ["Étudiant", "Professeur"])
 
 # --- CHARGEMENT DES DONNÉES ---
 try:
-    # On charge les questions de l'onglet sélectionné
+    # Lecture directe sans passer par des fonctions complexes
     df_questions = conn.read(spreadsheet=URL_QUESTIONS, worksheet=instance)
-    # Nettoyage des colonnes au cas où il y aurait des espaces
-    df_questions.columns = df_questions.columns.str.strip()
+    # On force le nom des colonnes en majuscule/nettoyé
+    df_questions.columns = [str(c).strip() for c in df_questions.columns]
+    
+    if 'Case' not in df_questions.columns:
+        st.error(f"L'onglet '{instance}' ne semble pas avoir de colonne 'Case'.")
+        st.stop()
+        
     MAX_CASES = int(df_questions['Case'].max())
+    
+    # ... reste du code (Etudiant / Professeur) ...
 
     if role == "Étudiant":
         if not nom_utilisateur:
