@@ -7,7 +7,7 @@ st.set_page_config(page_title="Jeu de l'Oie Connecté", layout="wide")
 
 # URLs de vos Sheets (Remplacez la deuxième par l'URL réelle de votre fichier scores)
 URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit?usp=drivesdk"
-URL_SCORES = "VOTRE_URL_SHEET_SCORES_ICI"
+URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc/edit?usp=sharing"
 
 # --- CONNEXION ---
 conn = st.connection("gsheets", type=GSheetsConnection)
