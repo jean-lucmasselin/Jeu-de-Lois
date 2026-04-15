@@ -2,48 +2,42 @@ import streamlit as st
 import pandas as pd
 import random
 
-# Gestion des imports
-try:
-    from streamlit_gsheets import GSheetsConnection
-except ImportError:
-    from streamlit_gsheets import GSheetConnection as GSheetsConnection
+st.set_page_config(page_title="Jeu de l'Oie Pédagogique", layout="wide")
 
-st.set_page_config(page_title="Jeu de l'Oie Pro", layout="wide")
+# --- CONFIGURATION DES URLS ---
+# On utilise l'ID pur du fichier pour construire des URLs de téléchargement direct
+ID_QUESTIONS = "1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E"
+ID_SCORES = "1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc"
 
-# --- CONFIGURATION DES URLS (Nettoyées) ---
-URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E/edit#gid=0"
-URL_SCORES = "https://docs.google.com/spreadsheets/d/1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc/edit#gid=0"
+# Fonction pour lire n'importe quel onglet en CSV (évite l'erreur 400)
+def read_gsheet(file_id, sheet_name):
+    url = f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+    return pd.read_csv(url)
 
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# --- FONCTION : RÉCUPÉRER TOUS LES ONGLETS ---
+# --- RÉCUPÉRATION DES ONGLETS ---
 @st.cache_data(ttl=60)
-def get_sheet_names(url):
-    # Cette astuce permet de lister les onglets sans charger tout le contenu
-    sheet_id = url.split("/d/")[1].split("/")[0]
-    export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit#gid=0"
-    # On force la lecture de la liste des onglets via pandas
-    all_sheets = pd.ExcelFile(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx")
+def get_tab_names(file_id):
+    url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+    all_sheets = pd.ExcelFile(url)
     return all_sheets.sheet_names
 
-# --- INTERFACE LATÉRALE ---
+# --- BARRE LATÉRALE ---
 st.sidebar.title("🎲 Configuration")
 
 try:
-    # Récupération automatique des onglets du fichier Questions
-    onglets_disponibles = get_sheet_names(URL_QUESTIONS)
-    instance = st.sidebar.selectbox("Choisir le cours :", onglets_disponibles)
+    tabs = get_tab_names(ID_QUESTIONS)
+    instance = st.sidebar.selectbox("Choisir le jeu :", tabs)
 except Exception as e:
-    st.error("Erreur lors de la lecture des onglets. Vérifiez le partage du fichier Questions.")
+    st.error("Erreur lors de la lecture des onglets.")
     st.stop()
 
 nom_utilisateur = st.sidebar.text_input("Votre Nom :")
 role = st.sidebar.radio("Rôle :", ["Étudiant", "Professeur"])
 
-# --- CHARGEMENT DES QUESTIONS ---
+# --- CHARGEMENT DES DONNÉES ---
 try:
-    # On charge l'onglet sélectionné
-    df_questions = conn.read(spreadsheet=URL_QUESTIONS, worksheet=instance, ttl=0)
+    # Lecture directe via l'URL CSV (beaucoup plus stable)
+    df_questions = read_gsheet(ID_QUESTIONS, instance)
     df_questions.columns = [str(c).strip() for c in df_questions.columns]
     
     if 'Case' not in df_questions.columns:
@@ -52,26 +46,25 @@ try:
     
     MAX_CASES = int(df_questions['Case'].max())
 except Exception as e:
-    st.error(f"Erreur technique : {e}")
+    st.error(f"Erreur technique (Questions) : {e}")
     st.stop()
 
 # --- LOGIQUE DE JEU ---
 if role == "Étudiant":
     if not nom_utilisateur:
-        st.info("👈 Entrez votre nom dans le menu à gauche.")
+        st.info("👈 Entrez votre nom à gauche.")
     else:
         st.title(f"📍 Instance : {instance}")
         
-        # Lecture des scores (avec création d'onglet virtuel si erreur)
+        # Lecture des scores
         try:
-            df_scores = conn.read(spreadsheet=URL_SCORES, worksheet=instance, ttl=0)
+            df_scores = read_gsheet(ID_SCORES, instance)
             df_scores.columns = [str(c).strip() for c in df_scores.columns]
         except:
-            # Si l'onglet n'existe pas dans Scores, on l'initialise
             df_scores = pd.DataFrame(columns=["Étudiant", "Position"])
 
         # Position actuelle
-        if nom_utilisateur in df_scores["Étudiant"].values:
+        if not df_scores.empty and nom_utilisateur in df_scores["Étudiant"].values:
             current_pos = int(df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"].values[0])
         else:
             current_pos = 0
@@ -98,29 +91,35 @@ if role == "Étudiant":
                         if map_inv[choix] == str(q_row['Reponse']).strip():
                             st.success("Correct !")
                             # Mise à jour locale
-                            if nom_utilisateur in df_scores["Étudiant"].values:
+                            if not df_scores.empty and nom_utilisateur in df_scores["Étudiant"].values:
                                 df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = pos
                             else:
-                                df_scores = pd.concat([df_scores, pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": pos}])])
+                                new_line = pd.DataFrame([{"Étudiant": nom_utilisateur, "Position": pos}])
+                                df_scores = pd.concat([df_scores, new_line], ignore_index=True)
                             
-                            # Envoi vers Google (crée l'onglet si nécessaire)
-                            conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_scores)
-                            del st.session_state.temp_pos
-                            st.rerun()
+                            # SAUVEGARDE (On repasse par st.connection juste pour l'écriture)
+                            try:
+                                from streamlit_gsheets import GSheetsConnection
+                                conn = st.connection("gsheets", type=GSheetsConnection)
+                                conn.update(spreadsheet=f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit", worksheet=instance, data=df_scores)
+                                del st.session_state.temp_pos
+                                st.rerun()
+                            except Exception as e_save:
+                                st.error(f"Erreur lors de l'enregistrement du score : {e_save}")
                         else:
                             st.error("Faux ! Vous n'avancez pas.")
                             del st.session_state.temp_pos
-            except:
-                st.warning("Pas de question sur cette case.")
+            except Exception as e_q:
+                st.warning(f"Pas de question sur cette case ou erreur de format : {e_q}")
 
 elif role == "Professeur":
     st.title(f"📊 Suivi : {instance}")
     try:
-        df_visu = conn.read(spreadsheet=URL_SCORES, worksheet=instance, ttl=0)
+        df_visu = read_gsheet(ID_SCORES, instance)
         if not df_visu.empty:
             st.bar_chart(df_visu.set_index("Étudiant")["Position"])
             st.table(df_visu.sort_values(by="Position", ascending=False))
         else:
             st.write("Aucun joueur.")
     except:
-        st.write("L'onglet de score n'est pas encore créé (il le sera dès qu'un étudiant aura répondu juste).")
+        st.write("Aucun score enregistré.")
