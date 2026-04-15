@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_gsheets import GSheetConnection
+from streamlit_gsheets import GSheetsConnection  # Note le 's' à GSheets
 import pandas as pd
 import random
 
@@ -10,7 +10,7 @@ URL_QUESTIONS = "https://docs.google.com/spreadsheets/d/1-8CSR3Qd83t1VoJb4ppfBXR
 URL_SCORES = "VOTRE_URL_SHEET_SCORES_ICI"
 
 # --- CONNEXION ---
-conn = st.connection("gsheets", type=GSheetConnection)
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- CONFIGURATION INTERFACE ---
 st.sidebar.title("⚙️ Configuration")
