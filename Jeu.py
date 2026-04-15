@@ -13,7 +13,6 @@ URL_SCORES = f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit"
 NOM_FICHIER_QR = "qr_code.png"
 
 def read_gsheet(file_id, sheet_name):
-    # Cache_bust pour forcer la lecture de la version la plus récente
     cache_bust = random.randint(1, 99999)
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&x={cache_bust}"
     return pd.read_csv(url)
@@ -44,7 +43,6 @@ else:
 
 nom_utilisateur = st.sidebar.text_input("Votre Nom :")
 
-# --- ACCUEIL ---
 if role == "Étudiant" and not nom_utilisateur:
     st.info("👋 **Bienvenue !** Entrez votre nom dans le menu à gauche pour rejoindre la partie.")
     st.stop()
@@ -64,42 +62,4 @@ if role == "Étudiant":
     
     try:
         df_scores = read_gsheet(ID_SCORES, instance)
-        df_scores.columns = [str(c).strip() for c in df_scores.columns]
-        current_pos = int(df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"].values[0]) if nom_utilisateur in df_scores["Étudiant"].values else 0
-    except:
-        df_scores = pd.DataFrame(columns=["Étudiant", "Position"])
-        current_pos = 0
-
-    st.metric("Ma position", f"Case {current_pos} / {MAX_CASES}")
-
-    if 'temp_pos' not in st.session_state:
-        if st.button("🎲 Lancer le dé"):
-            de = random.randint(1, 6)
-            st.session_state.temp_pos = min(current_pos + de, MAX_CASES)
-            st.rerun()
-    else:
-        pos = st.session_state.temp_pos
-        st.subheader(f"🚀 Case visée : {pos}")
-        q_data = df_questions[df_questions['Case'] == pos]
-        
-        if not q_data.empty:
-            q_row = q_data.iloc[0]
-            if 'reponse_validee' not in st.session_state:
-                with st.form("quiz"):
-                    st.write(f"**Question :** {q_row['Question']}")
-                    choix = st.radio("Réponse :", [str(q_row['A']), str(q_row['B']), str(q_row['C'])])
-                    if st.form_submit_button("Valider"):
-                        map_inv = {str(q_row['A']): 'A', str(q_row['B']): 'B', str(q_row['C']): 'C'}
-                        bonne_rep = str(q_row['Bonne']).strip().upper()
-                        juste = (map_inv[choix] == bonne_rep)
-                        new_pos = pos if juste else max(0, current_pos - 1)
-                        
-                        # --- TENTATIVE DE SAUVEGARDE ---
-                        try:
-                            from streamlit_gsheets import GSheetsConnection
-                            conn = st.connection("gsheets", type=GSheetsConnection)
-                            
-                            # Préparation du tableau de score
-                            if not df_scores.empty and nom_utilisateur in df_scores["Étudiant"].values:
-                                df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"] = new_pos
-                            else:
+        df
