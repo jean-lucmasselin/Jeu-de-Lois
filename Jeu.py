@@ -47,7 +47,7 @@ if role == "Étudiant" and not nom_utilisateur:
     st.info("👋 **Bienvenue !** Entrez votre nom dans le menu à gauche pour rejoindre la partie.")
     st.stop()
 
-# --- CHARGEMENT ---
+# --- CHARGEMENT QUESTIONS ---
 try:
     df_questions = read_gsheet(ID_QUESTIONS, instance)
     df_questions.columns = [str(c).strip() for c in df_questions.columns]
@@ -60,6 +60,35 @@ except:
 if role == "Étudiant":
     st.title(f"📍 Parcours : {instance}")
     
+    # Chargement des scores
     try:
         df_scores = read_gsheet(ID_SCORES, instance)
-        df
+        df_scores.columns = [str(c).strip() for c in df_scores.columns]
+        if nom_utilisateur in df_scores["Étudiant"].values:
+            current_pos = int(df_scores.loc[df_scores["Étudiant"] == nom_utilisateur, "Position"].values[0])
+        else:
+            current_pos = 0
+    except:
+        df_scores = pd.DataFrame(columns=["Étudiant", "Position"])
+        current_pos = 0
+
+    st.metric("Ma position", f"Case {current_pos} / {MAX_CASES}")
+
+    if 'temp_pos' not in st.session_state:
+        if st.button("🎲 Lancer le dé"):
+            de = random.randint(1, 6)
+            st.session_state.temp_pos = min(current_pos + de, MAX_CASES)
+            st.rerun()
+    else:
+        pos = st.session_state.temp_pos
+        st.subheader(f"🚀 Case visée : {pos}")
+        q_data = df_questions[df_questions['Case'] == pos]
+        
+        if not q_data.empty:
+            q_row = q_data.iloc[0]
+            if 'reponse_validee' not in st.session_state:
+                with st.form("quiz"):
+                    st.write(f"**Question :** {q_row['Question']}")
+                    choix = st.radio("Réponse :", [str(q_row['A']), str(q_row['B']), str(q_row['C'])])
+                    if st.form_submit_button("Valider"):
+                        map_inv = {str(q_row['A']): 'A', str(q_
