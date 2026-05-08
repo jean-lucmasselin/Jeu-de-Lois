@@ -153,18 +153,28 @@ if role == "Professeur":
             df_v = read_gsheet(ID_SCORES, instance)
             if not df_v.empty:
                 df_v.columns = [str(c).strip() for c in df_v.columns]
-                # On ne garde que les colonnes utiles pour éviter les doublons
-                df_v = df_v[["Etudiant", "Position", "Coups", "Réussites", "Date", "Debut", "Fin"]]
-                df_v = df_v.sort_values(by=["Position", "Réussites"], ascending=False)
+                # Filtrage propre des colonnes
+                cols_to_show = ["Etudiant", "Position", "Coups", "Réussites", "Date", "Debut", "Fin"]
+                df_v = df_v[[c for c in cols_to_show if c in df_v.columns]]
                 
-                st.subheader("📊 Progression")
-                st.bar_chart(df_v.set_index("Etudiant")["Position"])
+                # Tri pour le tableau (Meilleurs en haut)
+                df_v_sorted = df_v.sort_values(by=["Position", "Réussites"], ascending=False)
                 
-                st.subheader("🏆 Résultats détaillés")
-                st.table(df_v.reset_index(drop=True))
+                st.subheader("📊 Progression globale (Vue Horizontale)")
+                
+                # MODIFICATION ICI : horizontal=True
+                # On trie à l'inverse pour le graphique pour que le 1er soit en haut
+                st.bar_chart(
+                    df_v.set_index("Etudiant")["Position"], 
+                    horizontal=True
+                )
+                
+                st.subheader("🏆 Classement détaillé")
+                st.table(df_v_sorted.reset_index(drop=True))
             else:
                 st.info("En attente de joueurs...")
-        except: st.info("Aucune donnée disponible.")
+        except: 
+            st.info("Données en cours de synchronisation...")
     
     with c2:
         st.subheader("QR Code")
