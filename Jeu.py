@@ -160,7 +160,7 @@ if role == "Professeur":
                 # Tri pour le tableau (Meilleurs en haut)
                 df_v_sorted = df_v.sort_values(by=["Position", "Réussites"], ascending=False)
                 
-                st.subheader("📊 Progression globale (Vue Horizontale)")
+                st.subheader("📊 Progression globale")
                 
                 # MODIFICATION ICI : horizontal=True
                 # On trie à l'inverse pour le graphique pour que le 1er soit en haut
