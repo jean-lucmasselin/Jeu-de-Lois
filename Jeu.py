@@ -12,106 +12,64 @@ st.set_page_config(page_title="Jeu de l'Oie Pédagogique", layout="wide")
 ID_QUESTIONS = "1-8CSR3Qd83t1VoJb4ppfBXRRmxPeE_EcBva19mlqY9E"
 ID_SCORES = "1-kIkRy_krSDRA77bb1kQVPGBA166VQ6OsL8G3GIzKgc"
 URL_SCORES = f"https://docs.google.com/spreadsheets/d/{ID_SCORES}/edit"
-NOM_FICHIER_QR = "qr_code.png" 
+# Utilisation d'un chemin robuste pour le QR Code
+NOM_FICHIER_QR = os.path.join(os.path.dirname(__file__), "qr_code.png")
 
 def read_gsheet(file_id, sheet_name):
     cb = random.randint(1, 99999)
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&x={cb}"
     return pd.read_csv(url)
 
+@st.cache_data(ttl=5)
 def get_tab_names(file_id):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     return pd.ExcelFile(url).sheet_names
 
 def draw_progress_bar(curr_pos, max_c, df_s, instance):
-    """
-    Crée une frise visuelle de progression avec les cases colorées.
-    - La case du joueur actuel en bleu
-    - Un point rouge dans la case du joueur le plus avancé
-    """
-    # Trouver le joueur le plus avancé
     max_pos = 0
-    leader = None
     if not df_s.empty and "Position" in df_s.columns:
         max_pos = int(df_s["Position"].max())
-        if max_pos > 0:
-            leader_data = df_s[df_s["Position"] == max_pos]
-            if not leader_data.empty:
-                leader = leader_data.iloc[0]["Etudiant"] if "Etudiant" in leader_data.columns else None
     
-    # HTML et CSS pour la frise
     html = """
     <style>
-        .progress-track {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            align-items: center;
+        .progress-track { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .progress-box { 
+            width: 40px; height: 40px; border: 2px solid #ddd; border-radius: 8px; 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 12px; font-weight: bold; background-color: #f9f9f9; position: relative;
         }
-        .progress-box {
-            width: 45px;
-            height: 45px;
-            border: 2px solid #999;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-            background-color: #f0f0f0;
-            position: relative;
-            min-width: 45px;
-        }
-        .progress-box.current {
-            background-color: #1f77b4;
-            color: white;
-            border-color: #1f77b4;
-        }
+        .progress-box.current { background-color: #1f77b4; color: white; border-color: #1f77b4; }
         .progress-box.leader-dot::after {
-            content: '';
-            position: absolute;
-            width: 22px;
-            height: 22px;
-            background-color: red;
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            content: ''; position: absolute; width: 12px; height: 12px; 
+            background-color: red; border-radius: 50%; top: -5px; right: -5px; border: 2px solid white;
         }
     </style>
     <div class="progress-track">
     """
-    
-    # Générer les cases
     for case in range(1, max_c + 1):
         is_current = (case == curr_pos)
-        is_leader = (case == max_pos and leader is not None)
-        
+        is_leader = (case == max_pos and max_pos > 0)
         class_str = "progress-box"
-        if is_current:
-            class_str += " current"
-        if is_leader and case != curr_pos:
-            class_str += " leader-dot"
-        
+        if is_current: class_str += " current"
+        if is_leader: class_str += " leader-dot"
         html += f'<div class="{class_str}">{case}</div>'
-    
     html += "</div>"
-    
     st.markdown(html, unsafe_allow_html=True)
 
-# --- SYNC DU COURS ACTIF (Lecture de l'onglet Config) ---
+# --- SYNC DU COURS ACTIF ---
 try:
     tabs = get_tab_names(ID_QUESTIONS)
     config_df = read_gsheet(ID_SCORES, "Config")
-    # On lit le nom du cours stocké (en-tête de la colonne A)
     instance_active = str(config_df.columns[0]).strip()
 except:
     tabs, instance_active = ["Supervision"], "Supervision"
 
-# --- SIDEBAR (Navigateur) ---
+# --- SIDEBAR ---
 st.sidebar.title("🎲 Configuration")
 role = st.sidebar.radio("Mon Rôle :", ["Étudiant", "Professeur"])
+
+# Initialisation du nom pour éviter les erreurs de variable inexistante
+nom_utilisateur = ""
 
 if role == "Professeur":
     # Sélection du cours
@@ -122,7 +80,6 @@ if role == "Professeur":
         try:
             from streamlit_gsheets import GSheetsConnection
             conn = st.connection("gsheets", type=GSheetsConnection)
-            # On écrit le nom du cours dans l'onglet Config
             df_config = pd.DataFrame(columns=[nouveau_cours])
             conn.update(spreadsheet=URL_SCORES, worksheet="Config", data=df_config)
             st.sidebar.success(f"Cours '{nouveau_cours}' activé !")
@@ -131,21 +88,21 @@ if role == "Professeur":
         except Exception as e:
             st.sidebar.error(f"Erreur Config : {e}")
     
-    instance = nouveau_cours # Le prof travaille sur ce qu'il a sélectionné
+    # Remplacement de l'auto-refresh par un bouton manuel
+    st.sidebar.divider()
+    if st.sidebar.button("🔄 Rafraîchir les scores"):
+        st.rerun()
+        
+    instance = nouveau_cours
 else:
-    # L'étudiant subit le cours choisi par le prof (bandeau vert)
+    # Vue Étudiant
     instance = instance_active
     st.sidebar.success(f"Cours actif : **{instance}**")
-
-nom_utilisateur = st.sidebar.text_input("Votre Nom :")
+    nom_utilisateur = st.sidebar.text_input("Votre Nom :")
 
 # --- SECTION PROFESSEUR ---
 if role == "Professeur":
     st.title(f"👨‍🏫 Tableau de Bord : {instance}")
-    
-    if st.sidebar.toggle("Actualisation automatique", value=True):
-        time.sleep(15)
-        st.rerun()
 
     c1, c2 = st.columns([3, 1])
     with c1:
@@ -153,7 +110,6 @@ if role == "Professeur":
             df_v = read_gsheet(ID_SCORES, instance)
             if not df_v.empty:
                 df_v.columns = [str(c).strip() for c in df_v.columns]
-                # Filtrage propre des colonnes
                 cols_to_show = ["Etudiant", "Position", "Coups", "Réussites", "Date", "Debut", "Fin"]
                 df_v = df_v[[c for c in cols_to_show if c in df_v.columns]]
                 
@@ -161,13 +117,8 @@ if role == "Professeur":
                 df_v_sorted = df_v.sort_values(by=["Position", "Réussites"], ascending=False)
                 
                 st.subheader("📊 Progression globale")
-                
-                # MODIFICATION ICI : horizontal=True
-                # On trie à l'inverse pour le graphique pour que le 1er soit en haut
-                st.bar_chart(
-                    df_v.set_index("Etudiant")["Position"], 
-                    horizontal=True
-                )
+                # Graphique horizontal
+                st.bar_chart(df_v.set_index("Etudiant")["Position"], horizontal=True)
                 
                 st.subheader("🏆 Classement détaillé")
                 st.table(df_v_sorted.reset_index(drop=True))
@@ -177,18 +128,17 @@ if role == "Professeur":
             st.info("Données en cours de synchronisation...")
     
     with c2:
-        st.subheader("QR Code")
+        st.subheader("Accès au jeu")
         if os.path.exists(NOM_FICHIER_QR):
-            st.image(Image.open(NOM_FICHIER_QR), use_container_width=True)
+            st.image(Image.open(NOM_FICHIER_QR), use_container_width=True, caption="Scanner pour rejoindre")
         else:
-            st.warning("QR Code absent sur GitHub")
+            st.warning(f"QR Code non trouvé : {os.path.basename(NOM_FICHIER_QR)}")
 
 # --- SECTION ÉTUDIANT ---
 elif role == "Étudiant":
     if not nom_utilisateur:
-        st.info("👋 Bienvenue ! Entrez votre nom à gauche pour commencer.")
+        st.info("👋 Bienvenue ! Entrez votre nom dans la barre latérale pour commencer.")
     else:
-        # Lecture des données (sans cache pour mise à jour en temps réel)
         try:
             df_q = read_gsheet(ID_QUESTIONS, instance)
             df_q.columns = [str(c).strip() for c in df_q.columns]
@@ -202,37 +152,26 @@ elif role == "Étudiant":
                 curr_reussites = int(user_data["Réussites"].values[0])
                 start_time = str(user_data["Debut"].values[0])
             else:
-                curr_pos, curr_coups, curr_reussites = 0, 0, 0
-                start_time = None
+                curr_pos, curr_coups, curr_reussites, start_time = 0, 0, 0, None
             
             max_c = int(df_q['Case'].max())
-        except Exception as e:
+        except:
             curr_pos, max_c, curr_coups, curr_reussites, start_time = 0, 20, 0, 0, None
 
-        # --- VICTOIRE ---
         if curr_pos >= max_c:
             st.title("🎉 ARRIVÉE !")
             st.balloons()
-            st.success(f"### Félicitations {nom_utilisateur} !")
-            st.write(f"Tu as terminé avec **{curr_reussites}** réussites en **{curr_coups}** coups.")
-            if st.button("Recommencer au début"):
-                # Reset
-                st.rerun()
-        
+            st.success(f"### Félicitations {nom_utilisateur} ! Parcours terminé.")
+            st.write(f"Stats : **{curr_reussites}** réussites / **{curr_coups}** coups.")
+            if st.button("Recommencer"): st.rerun()
         else:
             st.title(f"📍 Parcours : {instance}")
             st.metric("Ma position", f"Case {curr_pos} / {max_c}")
-            
-            # --- FRISE DE PROGRESSION ---
-            st.subheader("📊 Progression visuelle")
             draw_progress_bar(curr_pos, max_c, df_s, instance)
-            st.caption("🔵 Bleu = Ta position | 🔴 Point rouge = Meilleur joueur")
             
             if 'temp_pos' not in st.session_state:
                 if st.button("🎲 Lancer le dé"):
-                    de = random.randint(1, 6)
-                    st.session_state.temp_pos = min(curr_pos + de, max_c)
-                    # Heure de début au premier lancer
+                    st.session_state.temp_pos = min(curr_pos + random.randint(1, 6), max_c)
                     if not start_time or start_time == "nan":
                         st.session_state.start_time = datetime.now().strftime("%H:%M:%S")
                     else:
@@ -252,40 +191,25 @@ elif role == "Étudiant":
                             if st.form_submit_button("Valider"):
                                 m_inv = {str(q_row['A']): 'A', str(q_row['B']): 'B', str(q_row['C']): 'C'}
                                 juste = (m_inv[choix] == str(q_row['Bonne']).strip().upper())
-                                
-                                # Stats
                                 n_pos = t_pos if juste else max(0, curr_pos - 1)
-                                n_coups = curr_coups + 1
-                                n_reuss = curr_reussites + (1 if juste else 0)
                                 now = datetime.now()
-                                
-                                # Sauvegarde
-                                error_msg = None
                                 try:
                                     from streamlit_gsheets import GSheetsConnection
                                     conn = st.connection("gsheets", type=GSheetsConnection)
-                                    data_up = {
-                                        "Etudiant": nom_utilisateur,
-                                        "Position": n_pos,
-                                        "Coups": n_coups,
-                                        "Réussites": n_reuss,
-                                        "Date": now.strftime("%d/%m/%Y"),
-                                        "Debut": st.session_state.start_time,
-                                        "Fin": now.strftime("%H:%M:%S")
+                                    row = {
+                                        "Etudiant": nom_utilisateur, "Position": n_pos, 
+                                        "Coups": curr_coups + 1, "Réussites": curr_reussites + (1 if juste else 0),
+                                        "Date": now.strftime("%d/%m/%Y"), "Debut": st.session_state.start_time, "Fin": now.strftime("%H:%M:%S")
                                     }
                                     if nom_utilisateur in df_s["Etudiant"].values:
-                                        df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Réussites", "Date", "Debut", "Fin"]] = [n_pos, n_coups, n_reuss, data_up["Date"], data_up["Debut"], data_up["Fin"]]
+                                        df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Réussites", "Date", "Debut", "Fin"]] = [row["Position"], row["Coups"], row["Réussites"], row["Date"], row["Debut"], row["Fin"]]
                                     else:
-                                        df_s = pd.concat([df_s, pd.DataFrame([data_up])], ignore_index=True)
+                                        df_s = pd.concat([df_s, pd.DataFrame([row])], ignore_index=True)
                                     conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
-                                except Exception as e:
-                                    error_msg = str(e)
-                                    st.error(f"❌ ERREUR ÉCRITURE GOOGLE SHEETS:\n\n{error_msg}\n\nCopie ce message pour diagnostic.")
-                                
-                                if not error_msg:
                                     st.session_state.rep_validee = True
                                     st.session_state.res = (juste, str(q_row['Bonne']).strip().upper(), n_pos)
                                     st.rerun()
+                                except Exception as e: st.error(f"Erreur de sauvegarde : {e}")
                     else:
                         j, b, p = st.session_state.res
                         if j: st.success("✨ Bonne réponse !")
@@ -297,24 +221,17 @@ elif role == "Étudiant":
                 else:
                     st.warning("🍃 Case libre !")
                     if st.button("S'installer ici"):
-                        error_msg = None
                         try:
                             from streamlit_gsheets import GSheetsConnection
                             conn = st.connection("gsheets", type=GSheetsConnection)
                             now = datetime.now()
-                            # Heure de début si c'est la première action
                             s_t = st.session_state.get('start_time', now.strftime("%H:%M:%S"))
-                            
+                            row = {"Etudiant": nom_utilisateur, "Position": t_pos, "Coups": curr_coups + 1, "Réussites": curr_reussites, "Date": now.strftime("%d/%m/%Y"), "Debut": s_t, "Fin": now.strftime("%H:%M:%S")}
                             if nom_utilisateur in df_s["Etudiant"].values:
-                                df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Date", "Fin"]] = [t_pos, curr_coups + 1, now.strftime("%d/%m/%Y"), now.strftime("%H:%M:%S")]
+                                df_s.loc[df_s["Etudiant"] == nom_utilisateur, ["Position", "Coups", "Date", "Fin"]] = [row["Position"], row["Coups"], row["Date"], row["Fin"]]
                             else:
-                                nl = {"Etudiant": nom_utilisateur, "Position": t_pos, "Coups": 1, "Réussites": 0, "Date": now.strftime("%d/%m/%Y"), "Debut": s_t, "Fin": now.strftime("%H:%M:%S")}
-                                df_s = pd.concat([df_s, pd.DataFrame([nl])], ignore_index=True)
+                                df_s = pd.concat([df_s, pd.DataFrame([row])], ignore_index=True)
                             conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
-                        except Exception as e:
-                            error_msg = str(e)
-                            st.error(f"❌ ERREUR ÉCRITURE GOOGLE SHEETS:\n\n{error_msg}\n\nCopie ce message pour diagnostic.")
-                        
-                        if not error_msg:
                             del st.session_state.temp_pos
                             st.rerun()
+                        except Exception as e: st.error(f"Erreur : {e}")
