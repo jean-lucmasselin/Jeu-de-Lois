@@ -19,7 +19,6 @@ def read_gsheet(file_id, sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}&x={cb}"
     return pd.read_csv(url)
 
-@st.cache_data(ttl=5)
 def get_tab_names(file_id):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     return pd.ExcelFile(url).sheet_names
@@ -179,6 +178,7 @@ elif role == "Étudiant":
     if not nom_utilisateur:
         st.info("👋 Bienvenue ! Entrez votre nom à gauche pour commencer.")
     else:
+        # Lecture des données (sans cache pour mise à jour en temps réel)
         try:
             df_q = read_gsheet(ID_QUESTIONS, instance)
             df_q.columns = [str(c).strip() for c in df_q.columns]
@@ -196,7 +196,7 @@ elif role == "Étudiant":
                 start_time = None
             
             max_c = int(df_q['Case'].max())
-        except:
+        except Exception as e:
             curr_pos, max_c, curr_coups, curr_reussites, start_time = 0, 20, 0, 0, None
 
         # --- VICTOIRE ---
