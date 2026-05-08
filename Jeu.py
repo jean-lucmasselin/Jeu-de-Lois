@@ -24,6 +24,83 @@ def get_tab_names(file_id):
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
     return pd.ExcelFile(url).sheet_names
 
+def draw_progress_bar(curr_pos, max_c, df_s, instance):
+    """
+    Crée une frise visuelle de progression avec les cases colorées.
+    - La case du joueur actuel en bleu
+    - Un point rouge dans la case du joueur le plus avancé
+    """
+    # Trouver le joueur le plus avancé
+    max_pos = 0
+    leader = None
+    if not df_s.empty and "Position" in df_s.columns:
+        max_pos = int(df_s["Position"].max())
+        if max_pos > 0:
+            leader_data = df_s[df_s["Position"] == max_pos]
+            if not leader_data.empty:
+                leader = leader_data.iloc[0]["Etudiant"] if "Etudiant" in leader_data.columns else None
+    
+    # HTML et CSS pour la frise
+    html = """
+    <style>
+        .progress-track {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .progress-box {
+            width: 45px;
+            height: 45px;
+            border: 2px solid #999;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            background-color: #f0f0f0;
+            position: relative;
+            min-width: 45px;
+        }
+        .progress-box.current {
+            background-color: #1f77b4;
+            color: white;
+            border-color: #1f77b4;
+        }
+        .progress-box.leader-dot::after {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            background-color: red;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+    <div class="progress-track">
+    """
+    
+    # Générer les cases
+    for case in range(1, max_c + 1):
+        is_current = (case == curr_pos)
+        is_leader = (case == max_pos and leader is not None)
+        
+        class_str = "progress-box"
+        if is_current:
+            class_str += " current"
+        if is_leader and case != curr_pos:
+            class_str += " leader-dot"
+        
+        html += f'<div class="{class_str}">{case}</div>'
+    
+    html += "</div>"
+    
+    st.markdown(html, unsafe_allow_html=True)
+
 # --- SYNC DU COURS ACTIF (Lecture de l'onglet Config) ---
 try:
     tabs = get_tab_names(ID_QUESTIONS)
@@ -135,6 +212,11 @@ elif role == "Étudiant":
         else:
             st.title(f"📍 Parcours : {instance}")
             st.metric("Ma position", f"Case {curr_pos} / {max_c}")
+            
+            # --- FRISE DE PROGRESSION ---
+            st.subheader("📊 Progression visuelle")
+            draw_progress_bar(curr_pos, max_c, df_s, instance)
+            st.caption("🔵 Bleu = Ta position | 🔴 Point rouge = Meilleur joueur")
             
             if 'temp_pos' not in st.session_state:
                 if st.button("🎲 Lancer le dé"):
