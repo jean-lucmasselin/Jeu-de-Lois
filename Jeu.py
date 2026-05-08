@@ -267,7 +267,8 @@ elif role == "Étudiant":
                                     else:
                                         df_s = pd.concat([df_s, pd.DataFrame([data_up])], ignore_index=True)
                                     conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
-                                except: pass
+                                except Exception as e:
+                                    st.error(f"Erreur sauvegarde: {e}")
 
                                 st.session_state.rep_validee = True
                                 st.session_state.res = (juste, str(q_row['Bonne']).strip().upper(), n_pos)
@@ -296,6 +297,7 @@ elif role == "Étudiant":
                                 nl = {"Etudiant": nom_utilisateur, "Position": t_pos, "Coups": 1, "Réussites": 0, "Date": now.strftime("%d/%m/%Y"), "Debut": s_t, "Fin": now.strftime("%H:%M:%S")}
                                 df_s = pd.concat([df_s, pd.DataFrame([nl])], ignore_index=True)
                             conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
-                        except: pass
+                        except Exception as e:
+                            st.error(f"Erreur: {e}")
                         del st.session_state.temp_pos
                         st.rerun()
