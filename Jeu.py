@@ -250,6 +250,7 @@ elif role == "Étudiant":
                                 now = datetime.now()
                                 
                                 # Sauvegarde
+                                error_msg = None
                                 try:
                                     from streamlit_gsheets import GSheetsConnection
                                     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -268,11 +269,13 @@ elif role == "Étudiant":
                                         df_s = pd.concat([df_s, pd.DataFrame([data_up])], ignore_index=True)
                                     conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
                                 except Exception as e:
-                                    st.error(f"Erreur sauvegarde: {e}")
-
-                                st.session_state.rep_validee = True
-                                st.session_state.res = (juste, str(q_row['Bonne']).strip().upper(), n_pos)
-                                st.rerun()
+                                    error_msg = str(e)
+                                    st.error(f"❌ ERREUR ÉCRITURE GOOGLE SHEETS:\n\n{error_msg}\n\nCopie ce message pour diagnostic.")
+                                
+                                if not error_msg:
+                                    st.session_state.rep_validee = True
+                                    st.session_state.res = (juste, str(q_row['Bonne']).strip().upper(), n_pos)
+                                    st.rerun()
                     else:
                         j, b, p = st.session_state.res
                         if j: st.success("✨ Bonne réponse !")
@@ -284,6 +287,7 @@ elif role == "Étudiant":
                 else:
                     st.warning("🍃 Case libre !")
                     if st.button("S'installer ici"):
+                        error_msg = None
                         try:
                             from streamlit_gsheets import GSheetsConnection
                             conn = st.connection("gsheets", type=GSheetsConnection)
@@ -298,6 +302,9 @@ elif role == "Étudiant":
                                 df_s = pd.concat([df_s, pd.DataFrame([nl])], ignore_index=True)
                             conn.update(spreadsheet=URL_SCORES, worksheet=instance, data=df_s)
                         except Exception as e:
-                            st.error(f"Erreur: {e}")
-                        del st.session_state.temp_pos
-                        st.rerun()
+                            error_msg = str(e)
+                            st.error(f"❌ ERREUR ÉCRITURE GOOGLE SHEETS:\n\n{error_msg}\n\nCopie ce message pour diagnostic.")
+                        
+                        if not error_msg:
+                            del st.session_state.temp_pos
+                            st.rerun()
